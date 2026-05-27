@@ -32,47 +32,72 @@ function extractTextFromPdf(buffer) {
   }
 }
 
+const SECTION_PATTERNS = [
+  // Cabeçalhos de peças
+  /^SENTENÇA/i,
+  /^ACÓRDÃO/i,
+  /^ACORDAM/i,
+  /Vistos,\s+relatados\s+e\s+discutidos/i,
+  // Dispositivos de sentença
+  /JULGO\s+(PARCIALMENTE\s+)?PROCEDENTE/i,
+  /JULGO\s+IMPROCEDENTE/i,
+  /Ante o exposto/i,
+  /ISTO POSTO/i,
+  /Pelo exposto/i,
+  /Diante do exposto/i,
+  /Ex positis/i,
+  /Em face do exposto/i,
+  /Posto isso/i,
+  /Por tais fundamentos/i,
+  /^DISPOSITIVO/i,
+  // Dispositivos de acórdão
+  /Nego\s+provimento/i,
+  /Negar\s+provimento/i,
+  /Negam\s+provimento/i,
+  /Dou\s+provimento/i,
+  /Dar\s+provimento/i,
+  /Deram\s+provimento/i,
+  /\bcondeno\b/i,
+];
+
+const MAX_CHARS = 90000;
+
 function extractRelevantSections(text) {
+  // Documentos pequenos: envia tudo
+  if (text.length <= MAX_CHARS) return text;
+
   const lines = text.split("\n");
-
-  const SECTION_KEYWORDS = [
-    /^SENTENÇA/i,
-    /^ACÓRDÃO/i,
-    /^ACORDAM/i,
-    /JULGO\s+(PARCIALMENTE\s+)?PROCEDENTE/i,
-    /JULGO\s+IMPROCEDENTE/i,
-    /Ante o exposto/i,
-    /ISTO POSTO/i,
-    /Pelo exposto/i,
-    /Diante do exposto/i,
-  ];
-
   const sections = [];
+  let i = 0;
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const isKey = SECTION_KEYWORDS.some((rx) => rx.test(line));
+  while (i < lines.length) {
+    const isKey = SECTION_PATTERNS.some((p) => p.test(lines[i]));
     if (isKey) {
       const start = Math.max(0, i - 5);
       const end = Math.min(lines.length, i + 120);
-      sections.push({ start, text: lines.slice(start, end).join("\n") });
-      i = end - 1;
+      sections.push(lines.slice(start, end).join("\n"));
+      i = end;
+    } else {
+      i++;
     }
   }
 
-  if (sections.length === 0) {
-    return text.slice(0, 60000);
+  // Fallback: sem keywords encontradas — usa início + fim
+  if (sections.length === 0 || sections.join("").length < 3000) {
+    console.warn("Poucos resultados com keywords — usando fallback início+fim");
+    const inicio = text.slice(0, 40000);
+    const fim = text.slice(-40000);
+    return (inicio + "\n\n[...trecho central omitido...]\n\n" + fim).slice(0, MAX_CHARS);
   }
 
-  const MAX = 80000;
-  let combined = "";
-  for (const sec of sections) {
-    const block = `\n\n--- [trecho a partir da linha ${sec.start}] ---\n${sec.text}`;
-    if ((combined + block).length > MAX) break;
-    combined += block;
+  let combined = sections.join("\n\n---\n\n");
+
+  // Se ainda passou do limite, mantém as últimas seções (mais relevantes)
+  if (combined.length > MAX_CHARS) {
+    combined = combined.slice(-MAX_CHARS);
   }
 
-  return combined.trim();
+  return combined;
 }
 
 app.post("/analisar", upload.single("pdf"), async (req, res) => {
@@ -99,7 +124,11 @@ app.post("/analisar", upload.single("pdf"), async (req, res) => {
 
   const textoRelevante = extractRelevantSections(textoCompleto);
 
-  console.log(`PDF: ${req.file.originalname} | total: ${textoCompleto.length} chars | enviado: ${textoRelevante.length} chars (~${Math.round(textoRelevante.length / 4)} tokens)`);
+  console.log(
+    `[${req.file.originalname}] total: ${textoCompleto.length} chars | ` +
+    `enviado: ${textoRelevante.length} chars | ` +
+    `~${Math.round(textoRelevante.length / 4)} tokens`
+  );
 
   const systemPrompt = `Você é um assistente jurídico especializado em análise de processos cíveis brasileiros.
 Analise os trechos do processo fornecidos e retorne APENAS um JSON válido, sem markdown, sem texto antes ou depois.
