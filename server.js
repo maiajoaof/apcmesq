@@ -25,12 +25,54 @@ function extractTextFromPdf(buffer) {
   try {
     fs.writeFileSync(tmpPdf, buffer);
     execSync(`pdftotext "${tmpPdf}" "${tmpTxt}"`, { timeout: 30000 });
-    const text = fs.readFileSync(tmpTxt, "utf8");
-    return text.trim();
+    return fs.readFileSync(tmpTxt, "utf8").trim();
   } finally {
     try { fs.unlinkSync(tmpPdf); } catch {}
     try { fs.unlinkSync(tmpTxt); } catch {}
   }
+}
+
+function extractRelevantSections(text) {
+  const lines = text.split("\n");
+
+  const SECTION_KEYWORDS = [
+    /^SENTENÇA/i,
+    /^ACÓRDÃO/i,
+    /^ACORDAM/i,
+    /JULGO\s+(PARCIALMENTE\s+)?PROCEDENTE/i,
+    /JULGO\s+IMPROCEDENTE/i,
+    /Ante o exposto/i,
+    /ISTO POSTO/i,
+    /Pelo exposto/i,
+    /Diante do exposto/i,
+  ];
+
+  const sections = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isKey = SECTION_KEYWORDS.some((rx) => rx.test(line));
+    if (isKey) {
+      const start = Math.max(0, i - 5);
+      const end = Math.min(lines.length, i + 120);
+      sections.push({ start, text: lines.slice(start, end).join("\n") });
+      i = end - 1;
+    }
+  }
+
+  if (sections.length === 0) {
+    return text.slice(0, 60000);
+  }
+
+  const MAX = 80000;
+  let combined = "";
+  for (const sec of sections) {
+    const block = `\n\n--- [trecho a partir da linha ${sec.start}] ---\n${sec.text}`;
+    if ((combined + block).length > MAX) break;
+    combined += block;
+  }
+
+  return combined.trim();
 }
 
 app.post("/analisar", upload.single("pdf"), async (req, res) => {
@@ -43,27 +85,24 @@ app.post("/analisar", upload.single("pdf"), async (req, res) => {
     return res.status(500).json({ erro: "API key não configurada no servidor." });
   }
 
-  let textoProcesso;
+  let textoCompleto;
   try {
-    textoProcesso = extractTextFromPdf(req.file.buffer);
+    textoCompleto = extractTextFromPdf(req.file.buffer);
   } catch (err) {
     console.error("Erro ao extrair texto do PDF:", err.message);
     return res.status(422).json({ erro: "Não foi possível extrair o texto do PDF. Verifique se o arquivo não é escaneado sem OCR." });
   }
 
-  if (!textoProcesso || textoProcesso.length < 100) {
+  if (!textoCompleto || textoCompleto.length < 100) {
     return res.status(422).json({ erro: "O PDF não contém texto legível. Pode ser um arquivo escaneado sem OCR." });
   }
 
-  const MAX_CHARS = 80000;
-  const textoTruncado = textoProcesso.length > MAX_CHARS
-    ? textoProcesso.slice(0, MAX_CHARS) + "\n\n[... documento truncado ...]"
-    : textoProcesso;
+  const textoRelevante = extractRelevantSections(textoCompleto);
 
-  console.log(`PDF processado: ${req.file.originalname} | ${textoProcesso.length} caracteres → ${textoTruncado.length} enviados`);
+  console.log(`PDF: ${req.file.originalname} | total: ${textoCompleto.length} chars | enviado: ${textoRelevante.length} chars (~${Math.round(textoRelevante.length / 4)} tokens)`);
 
   const systemPrompt = `Você é um assistente jurídico especializado em análise de processos cíveis brasileiros.
-Analise o texto do processo e retorne APENAS um JSON válido, sem markdown, sem texto antes ou depois.
+Analise os trechos do processo fornecidos e retorne APENAS um JSON válido, sem markdown, sem texto antes ou depois.
 O JSON deve ter exatamente estas chaves:
 {
   "reclamante": "Nome completo do reclamante/autor",
@@ -77,7 +116,7 @@ O JSON deve ter exatamente estas chaves:
   "resultado_recurso": "Descrição do resultado ou 'Não aplicável'",
   "valor_acordao": "Apenas o valor monetário em reais ou 'Não aplicável'"
 }
-Seja preciso. Se uma informação não estiver clara no documento, indique 'Não identificado'.`;
+Seja preciso. Se uma informação não estiver clara nos trechos, indique 'Não identificado'.`;
 
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -94,7 +133,7 @@ Seja preciso. Se uma informação não estiver clara no documento, indique 'Não
         messages: [
           {
             role: "user",
-            content: `Analise o seguinte processo cível e retorne o JSON:\n\n${textoTruncado}`,
+            content: `Analise os seguintes trechos do processo cível e retorne o JSON:\n\n${textoRelevante}`,
           },
         ],
       }),
