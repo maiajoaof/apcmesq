@@ -10,7 +10,7 @@ const os = require("os");
 const app = express();
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 32 * 1024 * 1024 },
+  limits: { fileSize: 150 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (file.mimetype === "application/pdf") cb(null, true);
     else cb(new Error("Apenas arquivos PDF são aceitos"));
