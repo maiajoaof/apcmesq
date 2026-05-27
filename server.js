@@ -131,21 +131,22 @@ app.post("/analisar", upload.single("pdf"), async (req, res) => {
   );
 
   const systemPrompt = `Você é um assistente jurídico especializado em análise de processos cíveis brasileiros.
-Analise os trechos do processo fornecidos e retorne APENAS um JSON válido, sem markdown, sem texto antes ou depois.
+INSTRUÇÃO CRÍTICA: Sua resposta deve conter EXCLUSIVAMENTE um objeto JSON. Não escreva nenhuma palavra antes ou depois. Não use markdown. Não use blocos de código. Comece sua resposta diretamente com { e termine com }.
 O JSON deve ter exatamente estas chaves:
 {
   "reclamante": "Nome completo do reclamante/autor",
   "reclamada": "Nome completo da reclamada/réu",
   "houve_sentenca": "Sim" ou "Não",
   "houve_condenacao": "Sim" ou "Não",
-  "descricao_condenacao": "Natureza da condenação (ex: danos morais, danos materiais, obrigação de fazer) ou 'Não aplicável'",
-  "valor_condenacao": "Apenas o valor monetário em reais (ex: R$ 12.500,00) ou 'Não aplicável'",
+  "descricao_condenacao": "Natureza da condenação (ex: danos morais, danos materiais, obrigação de fazer) ou Não aplicável",
+  "valor_condenacao": "Apenas o valor monetário em reais (ex: R$ 12.500,00) ou Não aplicável",
   "houve_recurso": "Sim" ou "Não",
-  "recurso_julgado": "Sim", "Não" ou "Não aplicável",
-  "resultado_recurso": "Descrição do resultado ou 'Não aplicável'",
-  "valor_acordao": "Apenas o valor monetário em reais ou 'Não aplicável'"
+  "recurso_julgado": "Sim ou Não ou Não aplicável",
+  "resultado_recurso": "Descrição do resultado ou Não aplicável",
+  "valor_acordao": "Apenas o valor monetário em reais ou Não aplicável"
 }
-Seja preciso. Se uma informação não estiver clara nos trechos, indique 'Não identificado'.`;
+Se uma informação não estiver clara nos trechos, use o valor Não identificado.
+LEMBRE-SE: responda SOMENTE com o JSON, começando com { e terminando com }.`;
 
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -176,8 +177,23 @@ Seja preciso. Se uma informação não estiver clara nos trechos, indique 'Não 
 
     const data = await response.json();
     const text = data.content.map((i) => i.text || "").join("");
-    const clean = text.replace(/```json|```/g, "").trim();
-    const resultado = JSON.parse(clean);
+
+    let resultado = null;
+    // Tentativa 1: JSON direto
+    try { resultado = JSON.parse(text.trim()); } catch {}
+    // Tentativa 2: remove markdown e tenta novamente
+    if (!resultado) {
+      try { resultado = JSON.parse(text.replace(/```json|```/g, "").trim()); } catch {}
+    }
+    // Tentativa 3: extrai o primeiro bloco { ... } do texto
+    if (!resultado) {
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) { try { resultado = JSON.parse(match[0]); } catch {} }
+    }
+    if (!resultado) {
+      console.error("Resposta da IA não era JSON válido:", text.slice(0, 300));
+      return res.status(502).json({ erro: "A IA retornou um formato inesperado. Tente novamente." });
+    }
 
     res.json(resultado);
   } catch (err) {
