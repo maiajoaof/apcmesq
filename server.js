@@ -3,6 +3,9 @@ const express = require("express");
 const multer = require("multer");
 const fetch = require("node-fetch");
 const path = require("path");
+const { execSync } = require("child_process");
+const fs = require("fs");
+const os = require("os");
 
 const app = express();
 const upload = multer({
@@ -16,6 +19,20 @@ const upload = multer({
 
 app.use(express.static(path.join(__dirname, "public")));
 
+function extractTextFromPdf(buffer) {
+  const tmpPdf = path.join(os.tmpdir(), `proc_${Date.now()}.pdf`);
+  const tmpTxt = tmpPdf.replace(".pdf", ".txt");
+  try {
+    fs.writeFileSync(tmpPdf, buffer);
+    execSync(`pdftotext "${tmpPdf}" "${tmpTxt}"`, { timeout: 30000 });
+    const text = fs.readFileSync(tmpTxt, "utf8");
+    return text.trim();
+  } finally {
+    try { fs.unlinkSync(tmpPdf); } catch {}
+    try { fs.unlinkSync(tmpTxt); } catch {}
+  }
+}
+
 app.post("/analisar", upload.single("pdf"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ erro: "Nenhum arquivo PDF enviado." });
@@ -26,10 +43,27 @@ app.post("/analisar", upload.single("pdf"), async (req, res) => {
     return res.status(500).json({ erro: "API key não configurada no servidor." });
   }
 
-  const base64 = req.file.buffer.toString("base64");
+  let textoProcesso;
+  try {
+    textoProcesso = extractTextFromPdf(req.file.buffer);
+  } catch (err) {
+    console.error("Erro ao extrair texto do PDF:", err.message);
+    return res.status(422).json({ erro: "Não foi possível extrair o texto do PDF. Verifique se o arquivo não é escaneado sem OCR." });
+  }
+
+  if (!textoProcesso || textoProcesso.length < 100) {
+    return res.status(422).json({ erro: "O PDF não contém texto legível. Pode ser um arquivo escaneado sem OCR." });
+  }
+
+  const MAX_CHARS = 80000;
+  const textoTruncado = textoProcesso.length > MAX_CHARS
+    ? textoProcesso.slice(0, MAX_CHARS) + "\n\n[... documento truncado ...]"
+    : textoProcesso;
+
+  console.log(`PDF processado: ${req.file.originalname} | ${textoProcesso.length} caracteres → ${textoTruncado.length} enviados`);
 
   const systemPrompt = `Você é um assistente jurídico especializado em análise de processos cíveis brasileiros.
-Analise o documento e retorne APENAS um JSON válido, sem markdown, sem texto antes ou depois.
+Analise o texto do processo e retorne APENAS um JSON válido, sem markdown, sem texto antes ou depois.
 O JSON deve ter exatamente estas chaves:
 {
   "reclamante": "Nome completo do reclamante/autor",
@@ -60,20 +94,7 @@ Seja preciso. Se uma informação não estiver clara no documento, indique 'Não
         messages: [
           {
             role: "user",
-            content: [
-              {
-                type: "document",
-                source: {
-                  type: "base64",
-                  media_type: "application/pdf",
-                  data: base64,
-                },
-              },
-              {
-                type: "text",
-                text: "Analise este processo cível e retorne o JSON conforme instruído.",
-              },
-            ],
+            content: `Analise o seguinte processo cível e retorne o JSON:\n\n${textoTruncado}`,
           },
         ],
       }),
