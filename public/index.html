@@ -24,6 +24,8 @@
     h1 { font-family: 'DM Serif Display', serif; font-size: clamp(32px,6vw,44px); font-weight: 400; line-height: 1.15; }
     h1 em { font-style: italic; color: var(--text2); }
     .subtitle { margin-top: .875rem; font-size: 15px; color: var(--text2); line-height: 1.6; }
+
+    /* Upload */
     .upload-zone { position: relative; border: 1.5px dashed var(--border2); border-radius: var(--radius); padding: 3rem 2rem; text-align: center; cursor: pointer; transition: .2s; background: var(--surface); margin-bottom: 1rem; }
     .upload-zone:hover, .upload-zone.drag-over { border-color: var(--text2); background: var(--surface2); }
     .upload-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
@@ -31,7 +33,6 @@
     .upload-label { font-size: 15px; font-weight: 500; margin-bottom: .25rem; }
     .upload-hint { font-size: 13px; color: var(--text3); }
     .file-pill { display: none; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .75rem 1rem; margin-bottom: 1rem; }
-    .file-pill .icon { font-size: 1.25rem; }
     .file-pill-name { flex: 1; font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .file-pill-size { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--text3); }
     .btn { width: 100%; padding: 1rem; font-size: 15px; font-weight: 600; font-family: 'Instrument Sans', sans-serif; border: none; border-radius: var(--radius-sm); cursor: pointer; transition: opacity .15s, transform .1s; display: flex; align-items: center; justify-content: center; gap: 8px; }
@@ -41,12 +42,22 @@
     .btn-primary:disabled { opacity: .35; cursor: not-allowed; }
     .btn-secondary { background: var(--surface); color: var(--text2); border: 1px solid var(--border); margin-top: .75rem; }
     .btn-secondary:hover { background: var(--surface2); }
-    #loading { display: none; text-align: center; padding: 4rem 0; }
-    .spinner { width: 40px; height: 40px; border: 2px solid var(--border); border-top-color: var(--text); border-radius: 50%; animation: spin .75s linear infinite; margin: 0 auto 1.25rem; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .loading-label { font-size: 14px; color: var(--text2); }
     .error-box { display: none; background: var(--red-bg); border: 1px solid #F09595; border-radius: var(--radius-sm); padding: .875rem 1rem; color: var(--red-text); font-size: 14px; margin-top: 1rem; gap: 8px; align-items: flex-start; }
     .error-box.show { display: flex; }
+
+    /* Progress */
+    #loading { display: none; padding: 2.5rem 0; }
+    .progress-label { display: flex; justify-content: space-between; align-items: center; margin-bottom: .625rem; }
+    .progress-msg { font-size: 14px; color: var(--text2); }
+    .progress-pct { font-family: 'DM Mono', monospace; font-size: 13px; color: var(--text3); }
+    .progress-track { height: 6px; background: var(--border); border-radius: 999px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--text); border-radius: 999px; width: 0%; transition: width .4s ease; }
+    .progress-steps { display: flex; gap: 6px; margin-top: 1.25rem; flex-wrap: wrap; }
+    .progress-step { font-size: 11px; padding: 3px 10px; border-radius: 999px; border: .5px solid var(--border); color: var(--text3); background: var(--surface); transition: all .3s; white-space: nowrap; }
+    .progress-step.done { background: var(--green-bg); border-color: #C0DD97; color: var(--green-text); }
+    .progress-step.active { background: var(--text); border-color: var(--text); color: #fff; }
+
+    /* Results */
     #results { display: none; animation: rise .35s ease; }
     @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     .results-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
@@ -82,10 +93,10 @@
         <input type="file" id="pdf-input" accept=".pdf" />
         <div class="upload-icon">📄</div>
         <p class="upload-label">Arraste o PDF aqui ou clique para selecionar</p>
-        <p class="upload-hint">Somente arquivos .pdf · máximo 32 MB</p>
+        <p class="upload-hint">Somente arquivos .pdf · máximo 150 MB</p>
       </div>
       <div class="file-pill" id="file-pill">
-        <span class="icon">📎</span>
+        <span style="font-size:1.25rem">📎</span>
         <span class="file-pill-name" id="file-name">—</span>
         <span class="file-pill-size" id="file-size">—</span>
       </div>
@@ -93,11 +104,26 @@
       <div class="error-box" id="error-box">⚠️ <span id="error-msg"></span></div>
     </div>
 
+    <!-- Progress -->
     <div id="loading">
-      <div class="spinner"></div>
-      <p class="loading-label" id="loading-text">Analisando o processo…</p>
+      <div class="progress-label">
+        <span class="progress-msg" id="progress-msg">Iniciando...</span>
+        <span class="progress-pct" id="progress-pct">0%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+      <div class="progress-steps">
+        <span class="progress-step" id="step-1">Lendo PDF</span>
+        <span class="progress-step" id="step-2">Extraindo texto</span>
+        <span class="progress-step" id="step-3">Filtrando seções</span>
+        <span class="progress-step" id="step-4">Consultando IA</span>
+        <span class="progress-step" id="step-5">Processando</span>
+        <span class="progress-step" id="step-6">Concluído</span>
+      </div>
     </div>
 
+    <!-- Results -->
     <div id="results">
       <div class="results-top">
         <h2 class="results-heading">Resultado da análise</h2>
@@ -114,7 +140,7 @@
       <div class="fact-grid">
         <div class="fact"><p class="fact-label">Houve sentença?</p><p class="fact-value" id="r-sentenca">—</p></div>
         <div class="fact"><p class="fact-label">Houve condenação?</p><p class="fact-value" id="r-condenacao">—</p></div>
-        <div class="fact full"><p class="fact-label">Descrição da condenação</p><p class="fact-value" id="r-descricao-condenacao">—</p></div>
+        <div class="fact full"><p class="fact-label">Descrição da condenação</p><p class="fact-value" id="r-descricao">—</p></div>
         <div class="fact full"><p class="fact-label">Valor total da condenação</p><p class="fact-value" id="r-valor-condenacao">—</p></div>
       </div>
 
@@ -134,8 +160,6 @@
     let selectedFile = null;
     const dropZone = document.getElementById('drop-zone');
     const pdfInput = document.getElementById('pdf-input');
-    const filePill = document.getElementById('file-pill');
-    const btnAnalyze = document.getElementById('btn-analyze');
 
     pdfInput.addEventListener('change', e => { if (e.target.files[0]) setFile(e.target.files[0]); });
     dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
@@ -150,23 +174,32 @@
     function setFile(f) {
       selectedFile = f;
       document.getElementById('file-name').textContent = f.name;
-      document.getElementById('file-size').textContent = formatBytes(f.size);
-      filePill.style.display = 'flex';
-      btnAnalyze.disabled = false;
+      document.getElementById('file-size').textContent = fmt(f.size);
+      document.getElementById('file-pill').style.display = 'flex';
+      document.getElementById('btn-analyze').disabled = false;
       hideError();
     }
 
-    function formatBytes(b) {
-      if (b < 1048576) return (b/1024).toFixed(1)+' KB';
-      return (b/1048576).toFixed(1)+' MB';
-    }
-
-    function showError(msg) { const b = document.getElementById('error-box'); document.getElementById('error-msg').textContent = msg; b.classList.add('show'); }
+    function fmt(b) { return b < 1048576 ? (b/1024).toFixed(1)+' KB' : (b/1048576).toFixed(1)+' MB'; }
+    function showError(msg) { document.getElementById('error-msg').textContent = msg; document.getElementById('error-box').classList.add('show'); }
     function hideError() { document.getElementById('error-box').classList.remove('show'); }
+
+    function setProgress(pct, msg, activeStep) {
+      document.getElementById('progress-fill').style.width = pct + '%';
+      document.getElementById('progress-pct').textContent = pct + '%';
+      document.getElementById('progress-msg').textContent = msg;
+      for (let i = 1; i <= 6; i++) {
+        const el = document.getElementById(`step-${i}`);
+        el.className = 'progress-step';
+        if (i < activeStep) el.classList.add('done');
+        else if (i === activeStep) el.classList.add('active');
+      }
+    }
 
     function resetApp() {
       selectedFile = null; pdfInput.value = '';
-      filePill.style.display = 'none'; btnAnalyze.disabled = true;
+      document.getElementById('file-pill').style.display = 'none';
+      document.getElementById('btn-analyze').disabled = true;
       document.getElementById('upload-section').style.display = 'block';
       document.getElementById('loading').style.display = 'none';
       document.getElementById('results').style.display = 'none';
@@ -179,7 +212,6 @@
       if (v==='não'||v==='nao') return `<span class="badge badge-no">✕ Não</span>`;
       return `<span class="badge badge-na">${val||'Não informado'}</span>`;
     }
-
     function money(val) {
       if (!val||val.toLowerCase().includes('não')||val==='—') return `<span style="color:#9E9B94">Não aplicável</span>`;
       return `<span class="valor">${val}</span>`;
@@ -191,35 +223,52 @@
       document.getElementById('upload-section').style.display = 'none';
       document.getElementById('loading').style.display = 'block';
       document.getElementById('results').style.display = 'none';
+      setProgress(5, 'Iniciando...', 1);
 
-      const msgs = ['Lendo o processo…','Identificando as partes…','Verificando sentença e condenação…','Analisando recursos…','Finalizando análise…'];
-      let mi = 0;
-      const ltxt = document.getElementById('loading-text');
-      const iv = setInterval(() => { ltxt.textContent = msgs[++mi % msgs.length]; }, 2500);
+      const jobId = `job_${Date.now()}`;
+
+      // Conecta ao SSE para receber progresso
+      const evtSource = new EventSource(`/progresso/${jobId}`);
+      evtSource.onmessage = (e) => {
+        const { step, pct, msg } = JSON.parse(e.data);
+        if (step === 0) { evtSource.close(); return; }
+        setProgress(pct, msg, step);
+        if (pct >= 100) evtSource.close();
+      };
 
       try {
         const formData = new FormData();
         formData.append('pdf', selectedFile);
-        const resp = await fetch('/analisar', { method: 'POST', body: formData });
+
+        const resp = await fetch('/analisar', {
+          method: 'POST',
+          headers: { 'x-job-id': jobId },
+          body: formData
+        });
         const data = await resp.json();
         if (!resp.ok || data.erro) throw new Error(data.erro || 'Erro desconhecido');
 
-        clearInterval(iv);
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('results').style.display = 'block';
+        evtSource.close();
+        setProgress(100, 'Concluído!', 6);
 
-        document.getElementById('r-reclamante').textContent = data.reclamante || 'Não identificado';
-        document.getElementById('r-reclamada').textContent = data.reclamada || 'Não identificado';
-        document.getElementById('r-sentenca').innerHTML = badge(data.houve_sentenca);
-        document.getElementById('r-condenacao').innerHTML = badge(data.houve_condenacao);
-        document.getElementById('r-descricao-condenacao').textContent = data.descricao_condenacao || 'Não aplicável';
-        document.getElementById('r-valor-condenacao').innerHTML = money(data.valor_condenacao);
-        document.getElementById('r-recurso').innerHTML = badge(data.houve_recurso);
-        document.getElementById('r-recurso-julgado').innerHTML = badge(data.recurso_julgado);
-        document.getElementById('r-resultado-recurso').textContent = data.resultado_recurso || 'Não aplicável';
-        document.getElementById('r-valor-acordao').innerHTML = money(data.valor_acordao);
+        setTimeout(() => {
+          document.getElementById('loading').style.display = 'none';
+          document.getElementById('results').style.display = 'block';
+
+          document.getElementById('r-reclamante').textContent = data.reclamante || 'Não identificado';
+          document.getElementById('r-reclamada').textContent = data.reclamada || 'Não identificado';
+          document.getElementById('r-sentenca').innerHTML = badge(data.houve_sentenca);
+          document.getElementById('r-condenacao').innerHTML = badge(data.houve_condenacao);
+          document.getElementById('r-descricao').textContent = data.descricao_condenacao || 'Não aplicável';
+          document.getElementById('r-valor-condenacao').innerHTML = money(data.valor_condenacao);
+          document.getElementById('r-recurso').innerHTML = badge(data.houve_recurso);
+          document.getElementById('r-recurso-julgado').innerHTML = badge(data.recurso_julgado);
+          document.getElementById('r-resultado-recurso').textContent = data.resultado_recurso || 'Não aplicável';
+          document.getElementById('r-valor-acordao').innerHTML = money(data.valor_acordao);
+        }, 600);
+
       } catch (err) {
-        clearInterval(iv);
+        evtSource.close();
         document.getElementById('loading').style.display = 'none';
         document.getElementById('upload-section').style.display = 'block';
         showError('Erro ao analisar: ' + err.message);
