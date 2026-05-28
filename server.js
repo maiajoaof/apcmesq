@@ -3,7 +3,7 @@ const express = require("express");
 const multer = require("multer");
 const fetch = require("node-fetch");
 const path = require("path");
-const { execSync } = require("child_process");
+const { execSync, spawnSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 
@@ -30,7 +30,6 @@ function getPageCount(pdfPath) {
 function extractTextFromPdf(buffer) {
   const id = Date.now();
   const tmpPdf = path.join(os.tmpdir(), `proc_${id}.pdf`);
-  const tmpDir = path.join(os.tmpdir(), `proc_ocr_${id}`);
 
   try {
     fs.writeFileSync(tmpPdf, buffer);
@@ -38,72 +37,27 @@ function extractTextFromPdf(buffer) {
     const totalPages = getPageCount(tmpPdf);
     if (totalPages === 0) throw new Error("Não foi possível determinar o número de páginas");
 
-    console.log(`PDF com ${totalPages} páginas — processando página a página...`);
+    // Extrai todo o texto de uma vez (muito mais rápido que página a página)
+    const fullText = execSync(
+      `pdftotext "${tmpPdf}" -`,
+      { timeout: 60000, maxBuffer: 100 * 1024 * 1024 }
+    ).toString().trim();
 
-    let fullText = "";
-    let nativeCount = 0;
-    let ocrCount = 0;
+    const nativeRatio = fullText.length / totalPages;
+    console.log(`PDF: ${totalPages} págs | ${fullText.length} chars | ~${Math.round(nativeRatio)} chars/pág`);
 
-    fs.mkdirSync(tmpDir, { recursive: true });
-
-    for (let p = 1; p <= totalPages; p++) {
-      // Tenta extração nativa da página
-      let pageText = "";
-      try {
-        pageText = execSync(
-          `pdftotext -f ${p} -l ${p} "${tmpPdf}" -`,
-          { timeout: 10000 }
-        ).toString().trim();
-      } catch {}
-
-      if (pageText.length >= 20) {
-        fullText += pageText + "\n\n";
-        nativeCount++;
-        continue;
-      }
-
-      // Página sem texto — aplica OCR
-      const imgBase = path.join(tmpDir, `p${p}`);
-      try {
-        execSync(
-          `pdftoppm -f ${p} -l ${p} -r 200 -png "${tmpPdf}" "${imgBase}"`,
-          { timeout: 30000 }
-        );
-        const imgFiles = fs.readdirSync(tmpDir)
-          .filter(f => f.startsWith(`p${p}-`) || f === `p${p}.png`)
-          .filter(f => f.endsWith(".png"));
-
-        for (const img of imgFiles) {
-          const imgPath = path.join(tmpDir, img);
-          const outBase = imgPath.replace(".png", "_out");
-          try {
-            execSync(
-              `tesseract "${imgPath}" "${outBase}" -l por --psm 1 quiet`,
-              { timeout: 60000 }
-            );
-            const ocrText = fs.readFileSync(`${outBase}.txt`, "utf8").trim();
-            if (ocrText.length >= 20) {
-              fullText += ocrText + "\n\n";
-              ocrCount++;
-            }
-          } catch {}
-          try { fs.unlinkSync(imgPath); } catch {}
-          try { fs.unlinkSync(`${outBase}.txt`); } catch {}
-        }
-      } catch (e) {
-        console.warn(`Página ${p} — OCR falhou: ${e.message}`);
-      }
+    // Se o texto for muito escasso (< 50 chars por página em média),
+    // avisa no log mas continua — páginas de imagem simplesmente ficam em branco
+    if (nativeRatio < 50) {
+      console.warn(`Aviso: documento com poucas páginas nativas (~${Math.round(nativeRatio)} chars/pág). Páginas escaneadas serão ignoradas.`);
     }
 
-    console.log(`Extração: ${nativeCount} nativas, ${ocrCount} OCR, ${fullText.length} chars`);
+    if (fullText.length < 100) throw new Error("Nenhum texto extraído do documento");
 
-    if (fullText.trim().length < 100) throw new Error("Nenhum texto extraído do documento");
-
-    return fullText.trim();
+    return fullText;
 
   } finally {
     try { fs.unlinkSync(tmpPdf); } catch {}
-    try { execSync(`rm -rf "${tmpDir}"`); } catch {}
   }
 }
 
@@ -179,12 +133,12 @@ app.post("/analisar", upload.single("pdf"), async (req, res) => {
   try {
     textoCompleto = extractTextFromPdf(req.file.buffer);
   } catch (err) {
-    console.error("Erro ao extrair texto do PDF:", err.message);
-    return res.status(422).json({ erro: "Não foi possível extrair o texto do PDF. O arquivo pode estar corrompido ou protegido." });
+    console.error("Erro ao extrair texto:", err.message);
+    return res.status(422).json({ erro: "Não foi possível extrair o texto do PDF. O arquivo pode estar corrompido, protegido ou ser 100% escaneado sem OCR." });
   }
 
   if (!textoCompleto || textoCompleto.length < 100) {
-    return res.status(422).json({ erro: "O PDF não contém texto legível mesmo após OCR. Verifique se o arquivo está legível." });
+    return res.status(422).json({ erro: "O PDF não contém texto legível. Verifique se o arquivo está correto." });
   }
 
   const textoRelevante = extractRelevantSections(textoCompleto);

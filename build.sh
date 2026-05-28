@@ -2,11 +2,7 @@
 set -e
 
 echo "Instalando dependências do sistema..."
-apt-get update -qq && apt-get install -y -qq \
-  poppler-utils \
-  tesseract-ocr \
-  tesseract-ocr-por \
-  ghostscript
+apt-get update -qq && apt-get install -y -qq poppler-utils
 
 echo "Instalando dependências Node.js..."
 npm install
