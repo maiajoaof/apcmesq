@@ -151,6 +151,12 @@
         <div class="fact full"><p class="fact-label">Resultado do recurso</p><p class="fact-value" id="r-resultado-recurso">—</p></div>
         <div class="fact full"><p class="fact-label">Valor do acórdão</p><p class="fact-value" id="r-valor-acordao">—</p></div>
       </div>
+
+      <p class="section-eyebrow">Advogado da reclamada</p>
+      <div class="fact-grid">
+        <div class="fact full"><p class="fact-label">Nome</p><p class="fact-value" id="r-adv-nome">—</p></div>
+        <div class="fact full"><p class="fact-label">Telefone</p><p class="fact-value" id="r-adv-telefone">—</p></div>
+      </div>
     </div>
 
     <footer>Seus documentos não são armazenados. A análise é feita em tempo real.</footer>
@@ -265,6 +271,8 @@
           document.getElementById('r-recurso-julgado').innerHTML = badge(data.recurso_julgado);
           document.getElementById('r-resultado-recurso').textContent = data.resultado_recurso || 'Não aplicável';
           document.getElementById('r-valor-acordao').innerHTML = money(data.valor_acordao);
+          document.getElementById('r-adv-nome').textContent = data.advogado_reclamada_nome || 'Não identificado';
+          document.getElementById('r-adv-telefone').textContent = data.advogado_reclamada_telefone || 'Não identificado';
         }, 600);
 
       } catch (err) {
