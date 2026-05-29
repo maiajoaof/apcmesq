@@ -176,7 +176,9 @@ O JSON deve ter exatamente estas chaves:
   "houve_recurso": "Sim" ou "Não",
   "recurso_julgado": "Sim ou Não ou Não aplicável",
   "resultado_recurso": "Descrição do resultado ou Não aplicável",
-  "valor_acordao": "Apenas o valor monetário em reais ou Não aplicável"
+  "valor_acordao": "Apenas o valor monetário em reais ou Não aplicável",
+  "advogado_reclamada_nome": "Nome completo do advogado que representa a reclamada/réu, incluindo número OAB se disponível. Procure por expressões como 'Dr.', 'Dra.', 'Adv.', 'OAB', 'patrono', 'subscreve', 'representado por' associadas à parte ré",
+  "advogado_reclamada_telefone": "Telefone de contato do advogado da reclamada, incluindo DDD (ex: (11) 99999-9999). Procure em rodapés, cabeçalhos e qualificações das partes"
 }
 Se uma informação não estiver clara nos trechos, use o valor Não identificado.
 LEMBRE-SE: responda SOMENTE com o JSON, começando com { e terminando com }.`;
